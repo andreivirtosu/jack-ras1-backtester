@@ -1,0 +1,15 @@
+[workspace]
+resolver="3"
+members = [
+"strategy",
+"strategy-cli",
+"src-tauri"
+]
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release]
+opt-level = 3
+debug = false
