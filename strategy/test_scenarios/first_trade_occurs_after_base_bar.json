@@ -1,0 +1,18 @@
+{
+  "config": {
+    "symbol": "IBM",
+    "trading_mode": { "type": "Daily", "value": 1 },
+    "dollar_amount": 1000,
+    "base_bar_opp": false
+  },
+  "bars": [
+    { "timestamp": "", "open": 110.0, "high": 120.0, "low": 100.0, "close": 105.0, "volume": 100000, "is_base_bar": false },
+    { "timestamp": "", "open": 110.0, "high": 130.0, "low": 110.0, "close": 115.0, "volume": 100000, "is_base_bar": true },
+    { "timestamp": "", "open": 120.0, "high": 130.0, "low": 100.0, "close": 124.0, "volume": 100000, "is_base_bar": false },
+    { "timestamp": "", "open": 120.0, "high": 130.0, "low": 100.0, "close": 124.0, "volume": 100000, "is_base_bar": false }
+  ],
+  "expected_signals": [
+    { "signal_type": "Buy", "signal_trigger_price": 120.0, "size": 8, "reason": "first trade" }
+  ]
+}
+

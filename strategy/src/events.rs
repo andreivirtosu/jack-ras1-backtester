@@ -1,4 +1,6 @@
-#[derive(Debug, Clone)]
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Bar {
     pub timestamp: String,
     pub open: f64,

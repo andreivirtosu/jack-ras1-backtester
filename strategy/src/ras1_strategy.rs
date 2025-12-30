@@ -1,7 +1,10 @@
 use crate::events::{Bar, MarketEvent};
 use crate::strategy::{Signal, SignalType, Strategy};
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag="type", content="value")]
 pub enum TradingMode {
     Intraday {
         bar_minutes: u32,
@@ -25,7 +28,7 @@ struct BarData {
     close: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RAS1Config {
     pub symbol: String,
     pub trading_mode: TradingMode,
@@ -97,9 +100,14 @@ impl RAS1Strategy {
             BarType::UpBar => SignalType::Buy,
             BarType::DownBar => SignalType::Sell,
         };
+
+        let size = (self.config.dollar_amount as f64 / bar.open) as u32;
         Signal {
+            // timestamp: Utc::now(),
             signal_type,
             signal_trigger_price: bar.open,
+            size,
+            reason: String::from("first trade"),
         }
     }
 }
@@ -143,62 +151,31 @@ impl Strategy for RAS1Strategy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::MarketEvent;
-    use crate::strategy::{SignalType, Strategy};
+    use serde::Deserialize;
+    use std::fs;
+    use pretty_assertions::assert_eq;
+
+    #[derive(Deserialize)]
+    struct Scenario {
+        config: RAS1Config,
+        bars: Vec<Bar>,
+        expected_signals: Vec<Signal>,
+    }
 
     #[test]
-    fn ras1_first_trade() {
-        let mut strategy = RAS1Strategy::new(RAS1Config {
-            symbol: String::from("IBM"),
-            //trading_mode: TradingMode::Intraday { bar_minutes: 1, base_bar_start_time: String::from("")},
-            trading_mode: TradingMode::Daily(1),
-            dollar_amount: 1000,
-            base_bar_opp: false,
-        });
+    fn test_ras1_scenario() {
+        let file_content = fs::read_to_string("test_scenarios/first_trade_occurs_after_base_bar.json").unwrap();
+        let scenario: Scenario = serde_json::from_str(&file_content).unwrap();
 
-        if let TradingMode::Daily(days) = strategy.config.trading_mode {
-            println!("days: {}", days);
-        }
-
-        let bars = [
-            MarketEvent::Bar(Bar {
-                timestamp: String::from(""),
-                open: 110.0,
-                high: 120.0,
-                low: 100.0,
-                close: 105.0,
-                volume: 100_000,
-                is_base_bar: false,
-            }),
-            MarketEvent::Bar(Bar {
-                timestamp: String::from(""),
-                open: 110.0,
-                high: 130.0,
-                low: 110.0,
-                close: 115.0,
-                volume: 100_000,
-                is_base_bar: true,
-            }),
-            MarketEvent::Bar(Bar {
-                timestamp: String::from(""),
-                open: 120.0,
-                high: 130.0,
-                low: 100.0,
-                close: 124.0,
-                volume: 100_000,
-                is_base_bar: false,
-            }),
-        ];
+        let mut strategy = RAS1Strategy::new(scenario.config);
 
         let mut signals = vec![];
-        for bar in bars {
-            if let Some(s) = strategy.on_event(&bar) {
-                signals.push(s);
+        for bar in scenario.bars {
+            if let Some(sig) = strategy.on_event(&MarketEvent::Bar(bar)) {
+                signals.push(sig);
             }
         }
 
-        assert_eq!(signals.len(), 1);
-
-        println!("{:?}", signals);
+        assert_eq!(signals, scenario.expected_signals);
     }
 }
