@@ -13,10 +13,10 @@ pub enum SignalType {
 #[derive(Debug)]
 pub struct Signal {
     pub signal_type: SignalType,
-    pub timestamp: DateTime<Utc>,
+    // pub timestamp: DateTime<Utc>,
     pub signal_trigger_price: f64,
-    pub size: u32,
-    pub reason: String
+    // pub size: u32,
+    // pub reason: String
 }
 
 pub trait Strategy {

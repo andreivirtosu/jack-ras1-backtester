@@ -1,16 +1,22 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone)]
+pub struct Bar {
+    pub timestamp: String,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub volume: u32,
+    pub is_base_bar: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Trade {
+    pub timestamp: String,
+    pub price: f64,
+    pub size: u32,
+}
+
 pub enum MarketEvent {
-    Tick {
-        timestamp: String,
-        price: f64,
-        size: u32,
-    },
-    Bar {
-        timestamp: String,
-        open: f64,
-        high: f64,
-        low: f64,
-        close: f64,
-        volume: u32,
-    },
+    Trade(Trade),
+    Bar(Bar),
 }
