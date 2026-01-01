@@ -152,41 +152,60 @@ mod tests {
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::fs;
+    use std::path::Path;
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     struct Scenario {
+        desc: String,
         config: RAS1Config,
-        bars: Vec<Bar>,
         expected_signals: Vec<Signal>,
+        bars: Vec<BarArray>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ScenarioFile {
+        scenarios: Vec<Scenario>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct BarArray {
+        o: f64,
+        h: f64,
+        l: f64,
+        c: f64,
+        vol: u64,
+        is_base_bar: bool,
+    }
+
+    impl BarArray {
+        fn to_bar(&self) -> Bar {
+            Bar {
+                timestamp: "".to_string(),
+                open: self.o,
+                high: self.h,
+                low: self.l,
+                close: self.c,
+                volume: self.vol,
+                is_base_bar: self.is_base_bar,
+            }
+        }
     }
 
     #[test]
-    fn test_ras1_scenarios() -> io::Result<()> {
-        for entry in fs::read_dir("test_scenarios")? {
-            let entry = entry?;
-            let path = entry.path();
+    fn test_ras1_scenarios() -> std::io::Result<()> {
+        let file_path = Path::new("test_scenarios/first_trade.yaml");
+        let file_content = fs::read_to_string(file_path)?;
+        let scenario_file: ScenarioFile =
+            serde_yaml::from_str(&file_content).expect("failed to parse scenario YAML");
 
-            if path.extension().and_then(|e| e.to_str()) == Some("json") {
-                println!("{:?}", path);
-            }
-        }
+        for scenario in scenario_file.scenarios {
+            println!("Running scenario: {}", scenario.desc);
 
-        let mut files: Vec<_> = fs::read_dir("test_scenarios")?
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| p.extension() == Some(OsStr::new("json")))
-            .collect();
-
-        files.sort();
-
-        for path in files {
-            let file_content = fs::read_to_string(path).unwrap();
-            let scenario: Scenario = serde_json::from_str(&file_content).unwrap();
-
-            let mut strategy = RAS1Strategy::new(scenario.config);
-
+            let mut strategy = RAS1Strategy::new(scenario.config.clone());
             let mut signals = vec![];
-            for bar in scenario.bars {
+
+            for bar_array in scenario.bars {
+                let bar = bar_array.to_bar();
                 if let Some(sig) = strategy.on_event(&MarketEvent::Bar(bar)) {
                     signals.push(sig);
                 }

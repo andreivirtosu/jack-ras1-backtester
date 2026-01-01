@@ -7,7 +7,7 @@ pub struct Bar {
     pub high: f64,
     pub low: f64,
     pub close: f64,
-    pub volume: u32,
+    pub volume: u64,
     pub is_base_bar: bool,
 }
 
