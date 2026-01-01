@@ -16,10 +16,13 @@ pub enum TradingMode {
     Daily(u32),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RAS1Thresholds {
     /// BASE BAR %
-    pub base_bar_pct: f64,
+    pub base_bar_pct: Option<f64>,
+
+    /// BASE BAR END %
+    pub base_bar_end_pct: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +31,8 @@ pub struct RAS1Config {
     pub trading_mode: TradingMode,
     pub dollar_amount: u32,
     pub base_bar_opp: bool,
+
+    pub thresholds: RAS1Thresholds
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +60,7 @@ pub struct RAS1Strategy {
     state: StrategyState,
     prev_bar: Option<Bar>,
     prev_bar_type: Option<BarType>,
+    current_position: i32,
 }
 
 impl RAS1Strategy {
@@ -64,8 +70,73 @@ impl RAS1Strategy {
             state: StrategyState::WaitingForBase,
             prev_bar: None,
             prev_bar_type: None,
+            current_position: 0
         }
     }
+
+    fn should_reverse_on_initial_bar(&self, bar: &Bar) -> Option<f64> {
+        // println!("Checking reversal on bar: {:?}, {}, {:?}", bar, self.current_position, self.state);
+
+        let base_bar_pct = self.config.thresholds.base_bar_pct?;
+        let base_bar_end_pct = self.config.thresholds.base_bar_end_pct?;
+
+        let StrategyState::Active { base_bar_state } = &self.state else {
+            return None;
+        };
+
+        if self.current_position == 0 {
+            return None;
+        }
+
+        let close = base_bar_state.bar.close;
+
+        if self.current_position > 0 {
+
+            let low = base_bar_state.bar.low;
+            let basebar_pct_target =  close - (close * base_bar_pct/100.0);
+            let basebarend_pct_target = low - (low * base_bar_end_pct/100.0);
+
+            let target_price_reversal = f64::min(basebar_pct_target, basebarend_pct_target);
+
+            if target_price_reversal >= bar.low  {
+                println!("Both {} {} are >= then current bar low of {}", basebar_pct_target, basebarend_pct_target, bar.low);
+                return Some(target_price_reversal)
+            }
+
+        } else if self.current_position < 0 {
+
+            let high = base_bar_state.bar.high;
+            let basebar_pct_target =  close + (close * base_bar_pct/100.0);
+            let basebarend_pct_target = high + (high * base_bar_end_pct/100.0);
+
+            let target_price_reversal = f64::max(basebar_pct_target, basebarend_pct_target);
+
+            if target_price_reversal <= bar.high {
+                println!("Both {} {} are <= then current bar high of {}", basebar_pct_target, basebarend_pct_target, bar.low);
+                return Some(target_price_reversal)
+            }
+        }
+
+        None
+
+    }
+
+    fn reverse_trade(&self, trigger_price: f64) -> Signal {
+
+        let mut size = (self.config.dollar_amount as f64 / trigger_price) as u32;
+        size += self.current_position.unsigned_abs();
+
+        let signal_type = if self.current_position > 0 { SignalType::Sell} else {SignalType::Buy};
+
+        Signal {
+            // timestamp: Utc::now(),
+            signal_type,
+            signal_trigger_price: trigger_price,
+            size,
+            reason: String::from("reverse trade"),
+        }
+    }
+
 }
 
 impl RAS1Strategy {
@@ -109,10 +180,21 @@ impl RAS1Strategy {
         }
     }
 
+    fn update_position(&mut self, sig: &Signal) {
+        match sig.signal_type {
+            SignalType::Buy => { self.current_position += sig.size as i32;},
+            SignalType::Sell => {self.current_position -= sig.size as i32;}
+        }
+    }
+
     fn handle_trade(&mut self, trade: &Trade) -> Option<Signal> {
         match &self.state {
             StrategyState::WaitingForInitial { base_bar_state } => {
-                Some( self.emit_first_trade(&base_bar_state.bar_type, trade.price))
+                let sig =  self.emit_first_trade(&base_bar_state.bar_type, trade.price);
+
+                self.update_position(&sig);
+
+                Some(sig)
             },
             _ => None
         }
@@ -136,6 +218,11 @@ impl RAS1Strategy {
                 self.state = StrategyState::Active {
                     base_bar_state: base_bar_state.clone(),
                 };
+
+                if let Some(reversal_price) = self.should_reverse_on_initial_bar(bar) {
+                    return Some(self.reverse_trade(reversal_price));
+                }
+
                 None
             },
 
@@ -163,7 +250,6 @@ mod tests {
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::fs;
-    use std::path::Path;
 
     #[derive(Debug, Deserialize)]
     struct Scenario {
@@ -212,31 +298,42 @@ mod tests {
     }
 
     #[test]
-    fn test_ras1_scenarios() -> std::io::Result<()> {
-        let file_path = Path::new("test_scenarios/first_trade.yaml");
-        let file_content = fs::read_to_string(file_path)?;
-        let scenario_file: ScenarioFile =
-            serde_yaml::from_str(&file_content).expect("failed to parse scenario YAML");
+    fn test_scenarios() -> std::io::Result<()> {
 
-        for scenario in scenario_file.scenarios {
-            println!("Running scenario: {}", scenario.desc);
+        let mut yaml_files: Vec<_> = fs::read_dir("test_scenarios")?
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| matches!(path.extension().and_then(|s| s.to_str()), Some("yaml" | "yml")))
+            .collect();
 
-            let mut strategy = RAS1Strategy::new(scenario.config.clone());
-            let mut signals = vec![];
+        yaml_files.sort();
 
-            for bar_array in scenario.bars {
-                let bar = bar_array.to_bar();
+        for file_path in yaml_files {
+            println!("\nRunning scenarios from: {}", file_path.to_str().unwrap());
+            let file_content = fs::read_to_string(file_path)?;
+            let scenario_file: ScenarioFile =
+                serde_yaml::from_str(&file_content).expect("failed to parse scenario YAML");
 
-                if let Some(sig) = strategy.on_event(&MarketEvent::Trade(trade_at_open(&bar))) {
-                    signals.push(sig);
+            for scenario in scenario_file.scenarios {
+                println!("Running scenario: {}", scenario.desc);
+
+                let mut strategy = RAS1Strategy::new(scenario.config.clone());
+                let mut signals = vec![];
+
+                for bar_array in scenario.bars {
+                    let bar = bar_array.to_bar();
+
+                    if let Some(sig) = strategy.on_event(&MarketEvent::Trade(trade_at_open(&bar))) {
+                        signals.push(sig);
+                    }
+
+                    if let Some(sig) = strategy.on_event(&MarketEvent::Bar(bar)) {
+                        signals.push(sig);
+                    }
                 }
 
-                if let Some(sig) = strategy.on_event(&MarketEvent::Bar(bar)) {
-                    signals.push(sig);
-                }
+                assert_eq!(signals, scenario.expected_signals);
             }
-
-            assert_eq!(signals, scenario.expected_signals);
         }
 
         Ok(())
