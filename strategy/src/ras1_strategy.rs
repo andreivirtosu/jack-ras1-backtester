@@ -89,7 +89,7 @@ impl RAS1Strategy {
         self.prev_bar = Some(bar.clone());
     }
 
-    fn emit_first_trade(&self, base_bar_type: &BarType, bar: &Bar) -> Signal {
+    fn emit_first_trade(&self, base_bar_type: &BarType, bar_open: f64) -> Signal {
         let mut signal_type = match base_bar_type {
             BarType::UpBar => SignalType::Buy,
             BarType::DownBar => SignalType::Sell,
@@ -99,11 +99,11 @@ impl RAS1Strategy {
             signal_type = signal_type.reverse();
         }
 
-        let size = (self.config.dollar_amount as f64 / bar.open) as u32;
+        let size = (self.config.dollar_amount as f64 / bar_open) as u32;
         Signal {
             // timestamp: Utc::now(),
             signal_type,
-            signal_trigger_price: bar.open,
+            signal_trigger_price: bar_open,
             size,
             reason: String::from("first trade"),
         }
@@ -131,7 +131,7 @@ impl Strategy for RAS1Strategy {
             }
 
             StrategyState::WaitingForInitial { base_bar_state } => {
-                let sig = self.emit_first_trade(&base_bar_state.bar_type, bar);
+                let sig = self.emit_first_trade(&base_bar_state.bar_type, bar.open);
                 self.state = StrategyState::Active {
                     base_bar_state: base_bar_state.clone(),
                 };

@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
 use crate::events::MarketEvent;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 pub fn hello() {
@@ -13,11 +13,10 @@ pub enum SignalType {
 }
 
 impl SignalType {
-
     pub fn reverse(&self) -> SignalType {
         match self {
             SignalType::Buy => SignalType::Sell,
-            SignalType::Sell => SignalType::Buy
+            SignalType::Sell => SignalType::Buy,
         }
     }
 }
@@ -28,9 +27,9 @@ pub struct Signal {
     // pub timestamp: DateTime<Utc>,
     pub signal_trigger_price: f64,
     pub size: u32,
-    pub reason: String
+    pub reason: String,
 }
 
 pub trait Strategy {
-    fn on_event(&mut self, event:&MarketEvent) ->Option<Signal>;
+    fn on_event(&mut self, event: &MarketEvent) -> Option<Signal>;
 }
