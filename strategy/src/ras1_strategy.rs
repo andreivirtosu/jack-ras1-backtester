@@ -2,9 +2,11 @@ use crate::events::{Bar, MarketEvent};
 use crate::strategy::{Signal, SignalType, Strategy};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
+use std::io;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag="type", content="value")]
+#[serde(tag = "type", content = "value")]
 pub enum TradingMode {
     Intraday {
         bar_minutes: u32,
@@ -18,14 +20,6 @@ pub enum TradingMode {
 pub struct RAS1Thresholds {
     /// BASE BAR %
     pub base_bar_pct: f64,
-}
-
-#[derive(Debug)]
-struct BarData {
-    open: f64,
-    high: f64,
-    low: f64,
-    close: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,10 +90,14 @@ impl RAS1Strategy {
     }
 
     fn emit_first_trade(&self, base_bar_type: &BarType, bar: &Bar) -> Signal {
-        let signal_type = match base_bar_type {
+        let mut signal_type = match base_bar_type {
             BarType::UpBar => SignalType::Buy,
             BarType::DownBar => SignalType::Sell,
         };
+
+        if self.config.base_bar_opp {
+            signal_type = signal_type.reverse();
+        }
 
         let size = (self.config.dollar_amount as f64 / bar.open) as u32;
         Signal {
@@ -151,9 +149,9 @@ impl Strategy for RAS1Strategy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::fs;
-    use pretty_assertions::assert_eq;
 
     #[derive(Deserialize)]
     struct Scenario {
@@ -163,19 +161,40 @@ mod tests {
     }
 
     #[test]
-    fn test_ras1_scenario() {
-        let file_content = fs::read_to_string("test_scenarios/first_trade_occurs_after_base_bar.json").unwrap();
-        let scenario: Scenario = serde_json::from_str(&file_content).unwrap();
+    fn test_ras1_scenarios() -> io::Result<()> {
+        for entry in fs::read_dir("test_scenarios")? {
+            let entry = entry?;
+            let path = entry.path();
 
-        let mut strategy = RAS1Strategy::new(scenario.config);
-
-        let mut signals = vec![];
-        for bar in scenario.bars {
-            if let Some(sig) = strategy.on_event(&MarketEvent::Bar(bar)) {
-                signals.push(sig);
+            if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                println!("{:?}", path);
             }
         }
 
-        assert_eq!(signals, scenario.expected_signals);
+        let mut files: Vec<_> = fs::read_dir("test_scenarios")?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension() == Some(OsStr::new("json")))
+            .collect();
+
+        files.sort();
+
+        for path in files {
+            let file_content = fs::read_to_string(path).unwrap();
+            let scenario: Scenario = serde_json::from_str(&file_content).unwrap();
+
+            let mut strategy = RAS1Strategy::new(scenario.config);
+
+            let mut signals = vec![];
+            for bar in scenario.bars {
+                if let Some(sig) = strategy.on_event(&MarketEvent::Bar(bar)) {
+                    signals.push(sig);
+                }
+            }
+
+            assert_eq!(signals, scenario.expected_signals);
+        }
+
+        Ok(())
     }
 }

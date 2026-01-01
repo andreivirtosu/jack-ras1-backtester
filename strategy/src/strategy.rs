@@ -12,6 +12,16 @@ pub enum SignalType {
     Sell,
 }
 
+impl SignalType {
+
+    pub fn reverse(&self) -> SignalType {
+        match self {
+            SignalType::Buy => SignalType::Sell,
+            SignalType::Sell => SignalType::Buy
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Signal {
     pub signal_type: SignalType,
