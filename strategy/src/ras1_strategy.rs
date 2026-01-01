@@ -1,4 +1,4 @@
-use crate::events::{Bar, MarketEvent};
+use crate::events::{Bar, MarketEvent, Trade};
 use crate::strategy::{Signal, SignalType, Strategy};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -108,15 +108,17 @@ impl RAS1Strategy {
             reason: String::from("first trade"),
         }
     }
-}
 
-impl Strategy for RAS1Strategy {
-    fn on_event(&mut self, event: &MarketEvent) -> Option<Signal> {
-        let bar = match event {
-            MarketEvent::Bar(bar) => bar,
-            _ => return None,
-        };
+    fn handle_trade(&mut self, trade: &Trade) -> Option<Signal> {
+        match &self.state {
+            StrategyState::WaitingForInitial { base_bar_state } => {
+                Some( self.emit_first_trade(&base_bar_state.bar_type, trade.price))
+            },
+            _ => None
+        }
+    }
 
+    fn handle_bar(&mut self, bar: &Bar) -> Option<Signal>{
         let signal = match &self.state {
             StrategyState::WaitingForBase => {
                 if bar.is_base_bar {
@@ -130,19 +132,28 @@ impl Strategy for RAS1Strategy {
                 None
             }
 
-            StrategyState::WaitingForInitial { base_bar_state } => {
-                let sig = self.emit_first_trade(&base_bar_state.bar_type, bar.open);
+            StrategyState::WaitingForInitial { base_bar_state} => {
                 self.state = StrategyState::Active {
                     base_bar_state: base_bar_state.clone(),
                 };
-                Some(sig)
-            }
+                None
+            },
 
             StrategyState::Active { .. } => None,
         };
 
         self.update_prev_bar(bar);
         signal
+
+    }
+}
+
+impl Strategy for RAS1Strategy {
+    fn on_event(&mut self, event: &MarketEvent) -> Option<Signal> {
+        match event {
+            MarketEvent::Bar(bar) => self.handle_bar(bar),
+            MarketEvent::Trade(trade) => self.handle_trade(trade),
+        }
     }
 }
 
@@ -191,6 +202,15 @@ mod tests {
         }
     }
 
+
+    fn trade_at_open(bar: &Bar) -> Trade {
+        Trade {
+            timestamp: String::new(),
+            price: bar.open,
+            size: 1,
+        }
+    }
+
     #[test]
     fn test_ras1_scenarios() -> std::io::Result<()> {
         let file_path = Path::new("test_scenarios/first_trade.yaml");
@@ -206,6 +226,11 @@ mod tests {
 
             for bar_array in scenario.bars {
                 let bar = bar_array.to_bar();
+
+                if let Some(sig) = strategy.on_event(&MarketEvent::Trade(trade_at_open(&bar))) {
+                    signals.push(sig);
+                }
+
                 if let Some(sig) = strategy.on_event(&MarketEvent::Bar(bar)) {
                     signals.push(sig);
                 }
