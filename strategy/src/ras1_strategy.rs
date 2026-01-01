@@ -85,8 +85,8 @@ impl RAS1Strategy {
     }
 
     fn update_prev_bar(&mut self, bar: &Bar) {
-        self.prev_bar = Some(bar.clone());
         self.prev_bar_type = self.bar_type(bar);
+        self.prev_bar = Some(bar.clone());
     }
 
     fn emit_first_trade(&self, base_bar_type: &BarType, bar: &Bar) -> Signal {

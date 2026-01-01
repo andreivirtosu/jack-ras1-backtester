@@ -1,5 +1,5 @@
 scenarios:
-  - desc: "first trade: up base bar triggers Buy on next bar when base_bar_opp is false"
+  - desc: "first trade: up base bar => Buy on next bar"
     config:
       symbol: "IBM"
       trading_mode:
@@ -17,7 +17,26 @@ scenarios:
         size: 8
         reason: "first trade"
 
-  - desc: "first trade: up base bar triggers Sell on next bar when base_bar_opp is true"
+  - desc: "first trade: up base bar with same close as prev bar => Buy on next bar"
+    config:
+      symbol: "IBM"
+      trading_mode:
+        type: "Daily"
+        value: 1
+      dollar_amount: 1000
+      base_bar_opp: false
+    bars:
+      - { o: 110.0, h: 120.0, l: 100.0, c: 114.0, vol: 100000, is_base_bar: false }
+      - { o: 110.0, h: 120.0, l: 100.0, c: 115.0, vol: 100000, is_base_bar: false }
+      - { o: 110.0, h: 130.0, l: 110.0, c: 115.0, vol: 100000, is_base_bar: true }
+      - { o: 120.0, h: 130.0, l: 100.0, c: 124.0, vol: 100000, is_base_bar: false }
+    expected_signals:
+      - signal_type: "Buy"
+        signal_trigger_price: 120.0
+        size: 8
+        reason: "first trade"
+
+  - desc: "first trade: up base bar when when base_bar_opp => Sell on next bar"
     config:
       symbol: "IBM"
       trading_mode:
@@ -35,7 +54,7 @@ scenarios:
         size: 8
         reason: "first trade"
 
-  - desc: "first trade: down base bar triggers Sell on next bar when base_bar_opp is false"
+  - desc: "first trade: down base bar => Sell on next bar"
     config:
       symbol: "IBM"
       trading_mode:
@@ -53,7 +72,26 @@ scenarios:
         size: 8
         reason: "first trade"
 
-  - desc: "first trade: down base bar triggers Buy on next bar when base_bar_opp is true"
+  - desc: "first trade: down base bar when same close as prev bar => Sell on next bar"
+    config:
+      symbol: "IBM"
+      trading_mode:
+        type: "Daily"
+        value: 1
+      dollar_amount: 1000
+      base_bar_opp: false
+    bars:
+      - { o: 130.0, h: 140.0, l: 125.0, c: 130.0, vol: 100000, is_base_bar: false }
+      - { o: 130.0, h: 140.0, l: 125.0, c: 125.0, vol: 100000, is_base_bar: false }
+      - { o: 130.0, h: 135.0, l: 120.0, c: 125.0, vol: 100000, is_base_bar: true }
+      - { o: 124.0, h: 130.0, l: 120.0, c: 122.0, vol: 100000, is_base_bar: false }
+    expected_signals:
+      - signal_type: "Sell"
+        signal_trigger_price: 124.0
+        size: 8
+        reason: "first trade"
+
+  - desc: "first trade: down base bar when base_bar_opp => Buy on next bar "
     config:
       symbol: "IBM"
       trading_mode:
