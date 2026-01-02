@@ -22,7 +22,7 @@ scenarios:
       - signal_type: "Sell"
         signal_trigger_price: 108.0
         size: 17
-        reason: "reverse trade"
+        reason: "reverse [on initial-bar]"
 
   - desc: "trade reversal during initial bar:  => NO: base_bar_pct 108 not reached "
     config:
@@ -90,7 +90,7 @@ scenarios:
       - signal_type: "Buy"
         signal_trigger_price: 136.35
         size: 15
-        reason: "reverse trade"
+        reason: "reverse [on initial-bar]"
 
 
   - desc: "trade reversal during initial bar:  => NO: base_bar_pct target 132 not reached"
