@@ -29,6 +29,9 @@ pub struct RAS1Thresholds {
 
     /// NON BASE BAR MIN %
     pub non_base_bar_min_pct: Option<f64>,
+
+    /// NON BASE BAR MAX %
+    pub non_base_bar_max_pct: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,7 +72,9 @@ pub struct RAS1Strategy {
     current_position: i32,
 
     signals: Vec<Signal>, 
-    highest_close_bar: Option<Bar>
+    highest_close_bar: Option<Bar>,
+    lowest_close_bar: Option<Bar>
+
 }
 
 impl RAS1Strategy {
@@ -81,7 +86,8 @@ impl RAS1Strategy {
             prev_bar_type: None,
             current_position: 0,
             signals: vec![],
-            highest_close_bar: None
+            highest_close_bar: None,
+            lowest_close_bar: None
         }
     }
 
@@ -136,6 +142,22 @@ impl RAS1Strategy {
 
         None
     }
+
+    fn non_base_bar_max(&self) -> Option<f64> {
+        let pct = self.config.thresholds.non_base_bar_max_pct?;
+
+        if self.current_position > 0 {
+            let close = self.highest_close_bar.as_ref()?.close;
+            return Some(close - (close * pct/100.0));
+        }
+        else if self.current_position < 0{
+            let close = self.lowest_close_bar.as_ref()?.close;
+            return Some( close + (close * pct/100.0));
+        }
+
+        None
+    }
+
 
     fn non_base_bar_end(&self, bar: &Bar) -> Option<f64> {
         let pct = self.config.thresholds.non_base_bar_end_pct?;
@@ -198,9 +220,24 @@ impl RAS1Strategy {
         let basebarend = self.base_bar_end_pct()?;
 
         let targets = vec![basebar, basebarend,nonbasebar_end, nonbasebar_min];
-        println!("targets: {:?}", targets);
+        println!("targets scenario A: {:?}", targets);
 
-        self.reverse_target_hit(targets, bar)
+        match self.reverse_target_hit(targets, bar) {
+            Some(price) => Some(price),
+            _ => {
+                println!("highest_close_bar: {:?}", self.highest_close_bar.as_ref()?);
+                let nonbase_bar_end = if self.current_position>0 {
+                    self.non_base_bar_end(self.highest_close_bar.as_ref().unwrap())?
+                } else {
+                    self.non_base_bar_end(self.lowest_close_bar.as_ref().unwrap())?
+                };
+                let nonbasebar_max = self.non_base_bar_max()?;
+
+                let targets = vec![nonbase_bar_end, nonbasebar_max];
+                println!("targets scenario B: {:?}", targets);
+                self.reverse_target_hit(targets, bar)
+            }
+        }
     }
 
     fn reverse_trade(&self, trigger_price: f64, reason: String) -> Signal {
@@ -285,9 +322,13 @@ impl RAS1Strategy {
 
     fn handle_bar(&mut self, bar: &Bar) -> Option<Signal>{
 
-        // keep track of the bar with highest close
+        // keep track of the bar with highest/lowest close
         if self.highest_close_bar.as_ref().is_some_and(|b| b.high <= bar.high ) {
             self.highest_close_bar = Some(bar.clone());
+        }
+
+        if self.lowest_close_bar.as_ref().is_some_and(|b| b.low >= bar.low ) {
+            self.lowest_close_bar = Some(bar.clone());
         }
 
         let signal = match &self.state {
@@ -309,6 +350,7 @@ impl RAS1Strategy {
                 };
 
                 self.highest_close_bar = Some(bar.clone());
+                self.lowest_close_bar = Some(bar.clone());
 
                 if let Some(reversal_price) = self.should_reverse_on_initial_bar(bar) {
                     return Some(self.reverse_trade(reversal_price, String::from("reverse [on initial-bar]")));
